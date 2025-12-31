@@ -10,7 +10,7 @@
 
   Pré-requisitos:
     - CAPIM_DATA_DEV.POSSANI_SANDBOX.CREDIT_SIMULATIONS_ENRICHED_BORROWER
-    - CAPIM_DATA_DEV.POSSANI_SANDBOX.PRE_ANALYSES_ENRICHED_BORROWER (materializar via src/materialize_enriched_pre_analyses_borrower.py)
+    - CAPIM_DATA_DEV.POSSANI_SANDBOX.PRE_ANALYSES_ENRICHED_BORROWER (materializar via `python -m src.cli.materialize_enriched_pre_analyses_borrower`)
 */
 
 /* Views não podem depender de variáveis de sessão: use nomes fully-qualified diretamente. */

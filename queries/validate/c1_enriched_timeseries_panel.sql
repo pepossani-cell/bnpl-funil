@@ -7,7 +7,7 @@
 
   Requisitos:
     - CREDIT_SIMULATIONS_ENRICHED_BORROWER materializada.
-    - PRE_ANALYSES_ENRICHED_BORROWER materializada via `src/materialize_enriched_pre_analyses_borrower.py`.
+    - PRE_ANALYSES_ENRICHED_BORROWER materializada via `python -m src.cli.materialize_enriched_pre_analyses_borrower`.
 */
 
 SET cs_table = 'CAPIM_DATA_DEV.POSSANI_SANDBOX.CREDIT_SIMULATIONS_ENRICHED_BORROWER';

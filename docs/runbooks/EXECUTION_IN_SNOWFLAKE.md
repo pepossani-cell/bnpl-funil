@@ -21,5 +21,5 @@ Use Python local quando você precisar:
 
 Sugestão:
 - executar como módulo (evita problemas de import no Windows):
-  - `python -m src.run_sql_file --file queries/<arquivo>.sql`
+  - `python -m src.cli.run_sql_file --file queries/<arquivo>.sql`
 
