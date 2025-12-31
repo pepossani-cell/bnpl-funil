@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Env / secrets
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Generated validation outputs (keep repo clean)
+docs/VALIDATION_*.csv
+docs/VALIDATION_*.md
+docs/VALIDATION_V1_*.csv
+docs/VALIDATION_V1_*.md
+
+
