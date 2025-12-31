@@ -1,5 +1,5 @@
 # Core — Enriquecimento de `pre_analysis` (C1 legado)
-> Última revisão: **2025-12-31T00:00-03:00**.
+> Última revisão: **2025-12-31T00:15-03:00**.
 
 ## Propósito
 Este documento define o **core** do enrichment de C1 legado no grão `pre_analysis_id`, de forma **Snowflake-first** e auditável. Ele existe para evitar que agentes/humanos tentem aplicar regras de `credit_simulations` diretamente ao legado sem considerar:
@@ -41,6 +41,9 @@ Para reconstruir o eixo de financing no legado, a fonte “pronta” observada �
 
 No `queries/enrich/enrich_pre_analyses_borrower.sql`, os campos `financing_*` do legado são estimados a partir desses 3 inputs (com fórmula de PMT aproximada).
 
+Observação prática (para reduzir missing):
+- quando `MINIMUM/MAXIMUM_TERM_AVAILABLE` estiverem NULL, inferimos `term_min/max` a partir dos buckets de `INTEREST_RATES_ARRAY` (min term_start / max term_end).
+
 ### Features curadas (recomendado como “primeira escolha”)
 - `CAPIM_DATA.CAPIM_ANALYTICS.PRE_ANALYSIS_CREDIT_CHECK`
   - Features já agregadas por `pre_analysis_id` (SERASA/BVS/SCR + flags/timestamps)
@@ -77,6 +80,22 @@ No `queries/enrich/enrich_pre_analyses_borrower.sql`, os campos `financing_*` do
 - Auditoria (motor): `queries/audit/audit_credit_engine_information.sql`
 - Auditoria (financing legado): `queries/audit/audit_pre_analyses_financing_legacy.sql`
 - Enrichment unificado (quando precisar juntar legado+novo por tipo): `queries/enrich/enrich_pre_analyses_borrower.sql`
+
+--- 
+
+## Retry/appeal no legado (sem flag canônica)
+No legado (`PRE_ANALYSES` tipo `pre_analysis`) **não há** coluna canônica equivalente a `CREDIT_SIMULATIONS.APPEALABLE`.
+
+Decisão homologada:
+- expor `c1_appealable_prob` e `c1_appealable_inferred` no legado com base em um mapping aprendido de `credit_simulations`:
+  - \(P(\text{APPEALABLE}=TRUE \mid \text{rejected}, \text{rejection_reason}, \text{risk\_capim})\)
+- regras conservadoras para `c1_appealable_inferred`:
+  - TRUE se `p_true >= 0.90` e suporte `n_cs >= 500`
+  - FALSE se `p_true <= 0.05` e suporte `n_cs >= 500`
+  - caso contrário: NULL (unknown)
+- `c1_can_retry_with_financial_responsible` no legado = `c1_appealable_inferred`
+
+O campo `c1_appealable_inference_source` explicita qual critério foi usado (`by_rejection_reason_and_risk`, `by_rejection_reason_only`, ou `no_mapping_or_low_support`).
 
 ---
 

@@ -45,6 +45,8 @@ cs_base AS (
     cs.rejection_reason,
     cs.approved_at,
     cs.crivo_check_id,
+    cs.appealable,
+    cs.score AS risk_score_raw,
     cs.payment_default_risk,
     (cs.permitted_amount / 100.0)::FLOAT AS permitted_amount,
     cs.financing_conditions,
@@ -1991,7 +1993,10 @@ final AS (
     ) AS credit_simulation_was_approved,
 
     /* risk (Capim) + prob. default (se existir) */
-    pa_risk.risk_capim,
+    /* risk_capim é a mesma variável que CREDIT_SIMULATIONS.SCORE (0..5,-1,9),
+       mas o SCORE às vezes vem como "9,00". Preferimos o que vier preenchido via PRE_ANALYSES (type=credit_simulation),
+       e caímos no SCORE normalizado se necessário. */
+    COALESCE(pa_risk.risk_capim, TRY_TO_NUMBER(REPLACE(cs.risk_score_raw, ',', '.'))::NUMBER) AS risk_capim,
     pa_risk.risk_capim_subclass,
     cs.payment_default_risk,
 
@@ -2018,6 +2023,9 @@ final AS (
     /* lead auxiliares */
     cs.credit_lead_requested_amount,
     cs.under_age_patient_verified,
+
+    /* retry/appeal (canônico) */
+    cs.appealable AS c1_appealable,
 
     /* profundidade (janela ±1h) */
     COALESCE(ccs.total_credit_checks_count, 0) AS total_credit_checks_count,

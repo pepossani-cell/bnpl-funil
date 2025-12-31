@@ -77,6 +77,7 @@ pa_dedup AS (
     pa.RISK_CAPIM,
     pa.RISK_CAPIM_SUBCLASS,
     pa.REJECTION_REASON,
+    pa.IS_ELEGIBLE_WITH_COUNTER_PROPOSAL,
     pa.PRE_ANALYSIS_AMOUNT,
     pa.PRE_ANALYSIS_INSTALLMENT_AMOUNT,
     pa.COUNTER_PROPOSAL_AMOUNT,
@@ -168,14 +169,14 @@ part_a_reused AS (
     cs.credit_simulation_was_approved AS c1_was_approved,
     IFF(cs.credit_simulation_was_approved, 'approved', 'not_approved') AS c1_outcome_bucket,
     cs.credit_simulation_rejection_reason AS c1_rejection_reason,
-    IFF(
-      cs.credit_simulation_was_approved = FALSE
-      AND cs.under_age_patient_verified = TRUE
-      AND cs.borrower_role = 'patient',
-      TRUE, FALSE
-    ) AS c1_can_retry_with_financial_responsible,
+    /* retry/appeal canônico no CS */
+    cs.c1_appealable AS c1_can_retry_with_financial_responsible,
+    cs.c1_appealable AS c1_appealable,
+    NULL::FLOAT AS c1_appealable_prob,
+    NULL::TEXT  AS c1_appealable_inference_source,
     cs.credit_lead_requested_amount AS c1_requested_amount,
     cs.permitted_amount AS c1_approved_amount,
+    cs.c1_has_counter_proposal,
     cs.financing_term_min,
     cs.financing_term_max,
     cs.financing_installment_value_min,
@@ -277,6 +278,7 @@ pa_legacy AS (
     pa.RISK_CAPIM,
     pa.RISK_CAPIM_SUBCLASS,
     pa.REJECTION_REASON,
+    pa.IS_ELEGIBLE_WITH_COUNTER_PROPOSAL,
     pa.PRE_ANALYSIS_AMOUNT AS c1_amount,
     pa.COUNTER_PROPOSAL_AMOUNT,
     pa.MAXIMUM_TERM_AVAILABLE,
@@ -1147,7 +1149,34 @@ part_b_enriched AS (
       ELSE 'unknown'
     END AS c1_outcome_bucket,
     pa.rejection_reason AS c1_rejection_reason,
-    IFF(pa.c1_state='eligible' AND pa.rejection_reason IS NOT NULL, TRUE, FALSE) AS c1_can_retry_with_financial_responsible,
+    /* retry/appeal inferido no legado via mapping do CS (ordem deve casar com ramo CS!) */
+    CASE
+      WHEN pa.rejection_reason IS NULL THEN NULL
+      WHEN COALESCE(IFF(cs_ar.n_cs >= 500, cs_ar.p_true, NULL), IFF(cs_r.n_cs >= 500, cs_r.p_true, NULL)) >= 0.90 THEN TRUE
+      WHEN COALESCE(IFF(cs_ar.n_cs >= 500, cs_ar.p_true, NULL), IFF(cs_r.n_cs >= 500, cs_r.p_true, NULL)) <= 0.05 THEN FALSE
+      ELSE NULL
+    END AS c1_can_retry_with_financial_responsible,
+    CASE
+      WHEN pa.rejection_reason IS NULL THEN NULL
+      WHEN COALESCE(IFF(cs_ar.n_cs >= 500, cs_ar.p_true, NULL), IFF(cs_r.n_cs >= 500, cs_r.p_true, NULL)) >= 0.90 THEN TRUE
+      WHEN COALESCE(IFF(cs_ar.n_cs >= 500, cs_ar.p_true, NULL), IFF(cs_r.n_cs >= 500, cs_r.p_true, NULL)) <= 0.05 THEN FALSE
+      ELSE NULL
+    END AS c1_appealable,
+    IFF(
+      pa.rejection_reason IS NULL,
+      NULL,
+      COALESCE(
+        IFF(cs_ar.n_cs >= 500, cs_ar.p_true, NULL),
+        IFF(cs_r.n_cs >= 500,  cs_r.p_true,  NULL),
+        NULL
+      )
+    ) AS c1_appealable_prob,
+    CASE
+      WHEN pa.rejection_reason IS NULL THEN NULL
+      WHEN cs_ar.n_cs >= 500 THEN 'cs_appealable_by_rejection_reason_and_risk'
+      WHEN cs_r.n_cs  >= 500 THEN 'cs_appealable_by_rejection_reason_only'
+      ELSE 'no_mapping_or_low_support'
+    END AS c1_appealable_inference_source,
     pa.c1_amount AS c1_requested_amount,
     IFF(
       /* aprovado no legado: se houver contra-proposta, ela é o "permitido"; senão assume-se aprovado no valor solicitado */
@@ -1160,6 +1189,8 @@ part_b_enriched AS (
       )::FLOAT,
       NULL::FLOAT
     ) AS c1_approved_amount,
+    /* contra-proposta (canônico no legado) */
+    pa.is_elegible_with_counter_proposal AS c1_has_counter_proposal,
     fin.financing_term_min,
     fin.financing_term_max,
     fin.financing_installment_value_min,
@@ -1330,6 +1361,30 @@ part_b_enriched AS (
     cb.crivo_match_stage AS crivo_resolution_stage,
     cb.crivo_minutes_from_c1 AS crivo_minutes_from_cs
   FROM pa_legacy pa
+  /* mapping de appealable do CS: por (risk_capim,rejection_reason) e fallback só por reason */
+  LEFT JOIN (
+    SELECT
+      TRY_TO_NUMBER(REPLACE(cs.SCORE, ',', '.'))::NUMBER AS risk_capim,
+      cs.REJECTION_REASON AS rejection_reason,
+      COUNT(*)::NUMBER AS n_cs,
+      (COUNT_IF(cs.APPEALABLE=TRUE) / NULLIF(COUNT(*),0))::FLOAT AS p_true
+    FROM CAPIM_DATA.CAPIM_PRODUCTION.CREDIT_SIMULATIONS cs
+    WHERE cs.STATE='rejected'
+      AND cs.SCORE IS NOT NULL
+    GROUP BY 1,2
+  ) cs_ar
+    ON cs_ar.risk_capim = TRY_TO_NUMBER(pa.risk_capim)::NUMBER
+   AND cs_ar.rejection_reason = pa.rejection_reason
+  LEFT JOIN (
+    SELECT
+      cs.REJECTION_REASON AS rejection_reason,
+      COUNT(*)::NUMBER AS n_cs,
+      (COUNT_IF(cs.APPEALABLE=TRUE) / NULLIF(COUNT(*),0))::FLOAT AS p_true
+    FROM CAPIM_DATA.CAPIM_PRODUCTION.CREDIT_SIMULATIONS cs
+    WHERE cs.STATE='rejected'
+    GROUP BY 1
+  ) cs_r
+    ON cs_r.rejection_reason = pa.rejection_reason
   LEFT JOIN pa_legacy_financing_features fin
     ON fin.c1_entity_id = pa.c1_entity_id
   LEFT JOIN pacc_legacy pl

@@ -71,7 +71,7 @@ Contexto de negócio do funil:
 - Anti-cegueira de payload: `queries/audit/audit_payload_paths_sampling.sql`
 
 ### Unificar C1 em uma “tabela oficial” comparável (4 eixos)
-- Requisito: materializar `PRE_ANALYSES_ENRICHED_BORROWER_V1` via `src/materialize_enriched_pre_analyses_borrower.py`
+- Requisito: materializar `PRE_ANALYSES_ENRICHED_BORROWER` via `src/materialize_enriched_pre_analyses_borrower.py`
 - Criar a view oficial: `queries/views/create_view_c1_enriched_borrower_v1.sql`
 - Painel/consulta (mesma lógica; sem duplicar credit_simulation): `queries/validate/c1_enriched_timeseries_panel.sql`
 

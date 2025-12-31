@@ -35,12 +35,10 @@ cs AS (
     credit_simulation_was_approved AS c1_was_approved,
     IFF(credit_simulation_was_approved, 'approved', 'not_approved') AS c1_outcome_bucket,
     credit_simulation_rejection_reason AS c1_rejection_reason,
-    IFF(
-      credit_simulation_was_approved = FALSE
-      AND under_age_patient_verified = TRUE
-      AND borrower_role = 'patient',
-      TRUE, FALSE
-    ) AS c1_can_retry_with_financial_responsible,
+    c1_appealable AS c1_can_retry_with_financial_responsible,
+    c1_appealable AS c1_appealable,
+    NULL::FLOAT AS c1_appealable_prob,
+    'canonical_credit_simulations'::TEXT AS c1_appealable_inference_source,
 
     /* valores */
     credit_lead_requested_amount AS c1_requested_amount,
@@ -106,11 +104,14 @@ pa AS (
     c1_outcome_bucket,
     c1_rejection_reason,
     c1_can_retry_with_financial_responsible,
+    c1_appealable,
+    c1_appealable_prob,
+    c1_appealable_inference_source,
 
     /* valores */
     c1_requested_amount,
     c1_approved_amount,
-    IFF(c1_approved_amount IS NOT NULL AND c1_requested_amount IS NOT NULL AND c1_approved_amount + 1e-6 < c1_requested_amount, TRUE, FALSE) AS c1_has_counter_proposal,
+    c1_has_counter_proposal,
 
     /* financing summary */
     financing_term_min,
@@ -146,9 +147,58 @@ pa AS (
     boa_vista_score
   FROM CAPIM_DATA_DEV.POSSANI_SANDBOX.PRE_ANALYSES_ENRICHED_BORROWER
   WHERE c1_entity_type = 'pre_analysis'
+),
+
+c1_union AS (
+  SELECT * FROM cs
+  UNION ALL
+  SELECT * FROM pa
+),
+
+clinic_score_ranked AS (
+  SELECT
+    u.c1_entity_type,
+    u.c1_entity_id,
+    l.CLINIC_SCORE_CHANGED_AT,
+    l.CLINIC_CREDIT_SCORE,
+    ROW_NUMBER() OVER (
+      PARTITION BY u.c1_entity_type, u.c1_entity_id
+      ORDER BY l.CLINIC_SCORE_CHANGED_AT DESC
+    ) AS rn
+  FROM c1_union u
+  LEFT JOIN CAPIM_DATA.CAPIM_ANALYTICS.CLINIC_SCORE_LOGS l
+    ON l.CLINIC_ID = u.clinic_id
+   AND l.CLINIC_SCORE_CHANGED_AT <= u.c1_created_at
 )
-SELECT * FROM cs
-UNION ALL
-SELECT * FROM pa
+SELECT
+  u.*,
+
+  /* risk safe-for-aggregation */
+  u.risk_capim AS risk_capim_raw,
+  IFF(u.risk_capim BETWEEN 0 AND 5, u.risk_capim, NULL) AS risk_capim_0_5,
+  IFF(u.risk_capim IN (-1,9), TRUE, FALSE) AS risk_capim_is_special,
+  CASE
+    WHEN u.risk_capim = -1 THEN 'engine_error_or_unknown'
+    WHEN u.risk_capim =  9 THEN 'special_high_risk'
+    ELSE NULL
+  END AS risk_capim_special_kind,
+
+  /* clinic risk dynamic (temporal) */
+  cs.CLINIC_CREDIT_SCORE AS clinic_credit_score_at_c1,
+  cs.CLINIC_SCORE_CHANGED_AT AS clinic_credit_score_changed_at_matched,
+  IFF(cs.CLINIC_SCORE_CHANGED_AT IS NULL, NULL, DATEDIFF('day', cs.CLINIC_SCORE_CHANGED_AT, u.c1_created_at)) AS clinic_credit_score_days_from_c1,
+  CASE
+    WHEN cs.CLINIC_SCORE_CHANGED_AT IS NULL THEN 'no_match'
+    WHEN DATEDIFF('day', cs.CLINIC_SCORE_CHANGED_AT, u.c1_created_at) <= 7 THEN '<=7d'
+    WHEN DATEDIFF('day', cs.CLINIC_SCORE_CHANGED_AT, u.c1_created_at) <= 30 THEN '<=30d'
+    WHEN DATEDIFF('day', cs.CLINIC_SCORE_CHANGED_AT, u.c1_created_at) <= 90 THEN '<=90d'
+    WHEN DATEDIFF('day', cs.CLINIC_SCORE_CHANGED_AT, u.c1_created_at) <= 365 THEN '<=365d'
+    ELSE '>365d'
+  END AS clinic_credit_score_match_stage
+FROM c1_union u
+LEFT JOIN clinic_score_ranked cs
+  ON cs.c1_entity_type = u.c1_entity_type
+ AND cs.c1_entity_id = u.c1_entity_id
+ AND cs.rn = 1
 ;
 

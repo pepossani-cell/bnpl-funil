@@ -1,5 +1,5 @@
 # Core — Enriquecimento de `credit_simulations` (C1)
-> Última revisão: **2025-12-30T13:55-03:00**.
+> Última revisão: **2025-12-31T00:00-03:00**.
 
 ## Propósito
 Este documento é a **fonte de verdade (core)** para o enrichment de C1 no grão `credit_simulation_id`. Ele define:
@@ -80,6 +80,29 @@ Não usar `COALESCE` fixo. A seleção é **dinâmica por eixo** conforme ADR 00
 - SERASA new deve ser separado por `kind` (ADR 0002)
 - `check_income_only.score` pode ser renda (centavos), não score (ADR 0003)
 - Normalização de score e inválidos (ADR 0004)
+
+### 6) Retry/appeal (retentar com responsável) — canônico
+Para `credit_simulations`, existe flag canônica:
+- `CAPIM_DATA.CAPIM_PRODUCTION.CREDIT_SIMULATIONS.APPEALABLE` (BOOLEAN)
+
+Recomendação:
+- expor como `c1_appealable` (e reutilizar como `c1_can_retry_with_financial_responsible` na camada unificada).
+- **Não** inferir retry por `under_age_patient_verified` (não implica responsável e existe responsável mesmo com `under_age=false`).
+
+### 7) Risk paciente (Capim) — canônico
+Existe `CAPIM_DATA.CAPIM_PRODUCTION.CREDIT_SIMULATIONS.SCORE` (TEXT) no domínio **0..5, -1, 9** (às vezes como `"9,00"`).
+
+Decisão:
+- tratar `SCORE` (normalizado) como `risk_capim` do paciente.
+- manter também `RISK_CAPIM_SUBCLASS` via `CAPIM_ANALYTICS.PRE_ANALYSES (type='credit_simulation')` quando disponível.
+
+Para evitar “poluir métricas”:
+- expor `risk_capim_raw` e um campo “safe for aggregation” `risk_capim_0_5` (NULL quando `-1`/`9`).
+
+### 8) Contra-oferta (CS)
+Não há coluna canônica explícita no `CREDIT_SIMULATIONS` (até onde auditado).
+Proxy recomendado:
+- `c1_has_counter_proposal = (aprovado) AND permitted_amount < requested_amount`
 
 ---
 

@@ -1,5 +1,5 @@
 # Contexto do projeto (AI-first) — Funil BNPL + entidades + fontes + guardrails
-> Última revisão: **2025-12-30T13:55-03:00**.  
+> Última revisão: **2025-12-31T00:30-03:00**.  
 > Público-alvo: **agentes de IA** e pessoas técnicas.  
 > Comece por: `docs/START_HERE.md`.
 
@@ -15,6 +15,12 @@ Este documento é um **mapa determinístico** do projeto para reduzir confusões
 > - `docs/ENRICHMENT_PRE_ANALYSIS_CORE.md`  
 > - `docs/ENRICHMENT_REQUESTS_CORE.md` (placeholder)
 > - `docs/ENRICHMENT_SIGNAL_GOVERNANCE.md` (governança de sinais/features: quando promover para o core)
+
+> Camada oficial (consumo) — C1 unificado:
+> - `CAPIM_DATA_DEV.POSSANI_SANDBOX.C1_ENRICHED_BORROWER`
+>   - inclui flags canônicas/inferidas (ex.: `APPEALABLE` no CS; `*_prob/*_source` no legado)
+>   - inclui risco paciente (`risk_capim`) com campos “safe for aggregation”
+>   - inclui risco clínica dinâmico via `CAPIM_ANALYTICS.CLINIC_SCORE_LOGS` com `match_stage`
 
 ---
 
